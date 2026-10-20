@@ -1,0 +1,25 @@
+name = "gary-board"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = true
+preview_urls = false
+
+# CORS for localhost is off in production. `wrangler dev` turns it on through .dev.vars.
+[vars]
+ALLOW_LOCAL = "0"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gary-board"
+database_id = "7b16a35c-4c01-4ff8-a945-b620c8538266"
+
+# Per-IP limits: a score submit replays a whole run, so writes are kept tight.
+[[ratelimits]]
+name = "WRITES"
+namespace_id = "7301"
+simple = { limit = 6, period = 60 }
+
+[[ratelimits]]
+name = "READS"
+namespace_id = "7302"
+simple = { limit = 60, period = 60 }

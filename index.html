@@ -107,6 +107,17 @@ ol.board li,ul.peers li{display:flex;align-items:center;gap:10px;padding:8px 12p
 .st{font-size:.8rem;font-weight:700;color:var(--muted)}
 .dot{width:18px;height:18px;flex:0 0 auto;border-radius:6px;border:2px solid var(--ink)}
 
+/* leaderboard */
+.tabs{display:flex;gap:4px;background:var(--paper-2);border:2px solid var(--ink);border-radius:13px;padding:4px}
+.tabs button{flex:1;border:0;border-radius:9px;padding:8px;font-family:var(--display);font-size:1rem;background:transparent;color:var(--ink);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--sun);box-shadow:inset 0 0 0 2px var(--ink)}
+#lbList{max-height:min(48vh,440px);overflow-y:auto}
+#lbList:empty{display:none}
+ol.board li.me{background:#fff4b8}
+.lb-sub{display:block;font-size:.74rem;font-weight:700;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.lb-race{flex:0 0 auto;font-family:var(--display);font-size:.82rem;line-height:1;border:2px solid var(--ink);border-radius:9px;background:var(--gum);padding:6px 9px;cursor:pointer;color:var(--ink)}
+.lb-race:focus-visible{outline:3px solid var(--gary);outline-offset:2px}
+
 /* party slots */
 .slots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 @media (max-width:560px){.slots{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -128,6 +139,9 @@ ol.board li,ul.peers li{display:flex;align-items:center;gap:10px;padding:8px 12p
 .hud-l{font-weight:800;font-size:.92rem;line-height:1.3;text-shadow:0 2px 0 var(--shadow);min-width:0}
 .hud-l .sub{opacity:.8;font-weight:700}
 #hudDist{font-family:var(--display);font-size:clamp(2.1rem,6vw,3.4rem);line-height:1;color:var(--paper);text-shadow:var(--o2),0 5px 0 var(--shadow);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hud-c{display:flex;flex-direction:column;align-items:center;gap:4px}
+.speed{font-weight:800;font-size:.78rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);background:var(--zap);border:2px solid var(--ink);border-radius:999px;padding:1px 10px;font-variant-numeric:tabular-nums}
+.speed.up{animation:pop .45s cubic-bezier(.2,1.6,.4,1) both}
 .hud-r{justify-self:end;margin-top:54px;display:flex;flex-direction:column;gap:6px;align-items:flex-end;min-width:0}
 .chip{display:flex;align-items:center;gap:7px;background:rgba(10,5,30,.7);border:2px solid rgba(255,242,223,.22);border-radius:999px;padding:3px 11px 3px 4px;font-weight:800;font-size:.86rem;white-space:nowrap}
 .chip .dot{width:16px;height:16px;border-radius:50%}
@@ -166,7 +180,7 @@ ol.board li,ul.peers li{display:flex;align-items:center;gap:10px;padding:8px 12p
 
 <div id="hud" hidden>
   <div class="hud-l"><div id="hudCourse"></div><div id="hudSub" class="sub"></div></div>
-  <div id="hudDist">0 m</div>
+  <div class="hud-c"><div id="hudDist">0 m</div><div id="hudSpeed" class="speed">Speed 1</div></div>
   <div class="hud-r" id="hudBoard"></div>
 </div>
 
@@ -199,6 +213,7 @@ ol.board li,ul.peers li{display:flex;align-items:center;gap:10px;padding:8px 12p
         <button class="btn btn-paper" id="btnRandom">Random course</button>
         <button class="btn btn-paper" id="btnParty">Party mode</button>
       </div>
+      <button class="btn btn-paper" id="btnBoard">Leaderboard</button>
       <button class="btn btn-mint" id="btnLive" hidden>Live race with friends</button>
       <p class="controls"><b>Flip gravity</b> with Space, the arrow keys, a click or a tap. You can only flip while you touch a surface.</p>
       <details class="more"><summary>How it works</summary>
@@ -225,6 +240,7 @@ ol.board li,ul.peers li{display:flex;align-items:center;gap:10px;padding:8px 12p
       <div class="bigdist"><span id="resDist">0</span><span class="unit">m</span></div>
       <div class="badges" id="resBadges"></div>
       <p class="vs" id="resVs" hidden></p>
+      <p class="vs" id="resRank" hidden></p>
       <div class="share">
         <button class="btn btn-gary" id="btnShare">Challenge a friend</button>
         <p class="fine" id="shareMsg"></p>
@@ -232,7 +248,27 @@ ol.board li,ul.peers li{display:flex;align-items:center;gap:10px;padding:8px 12p
       </div>
       <div class="row">
         <button class="btn" id="btnAgain">Run again<kbd>Space</kbd></button>
+        <button class="btn btn-paper" id="btnResBoard">Leaderboard</button>
         <button class="btn btn-paper" id="btnResMenu">Menu</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="scrBoard" class="screen" hidden>
+  <div class="wrap">
+    <div class="card">
+      <div class="eyebrow">Leaderboard</div>
+      <h2 id="lbTitle">Today's course</h2>
+      <div class="tabs" role="tablist" aria-label="Leaderboard">
+        <button role="tab" id="lbTabToday" aria-selected="true">Today</button>
+        <button role="tab" id="lbTabAll" aria-selected="false">All time</button>
+      </div>
+      <ol class="board" id="lbList"></ol>
+      <p class="fine" id="lbMsg"></p>
+      <div class="row">
+        <button class="btn" id="lbPlay">Play today's course</button>
+        <button class="btn btn-paper" id="lbBack">Back</button>
       </div>
     </div>
   </div>
@@ -329,18 +365,9 @@ const ARTIFACT_URL = 'https://claude.ai/artifact/A5igswKyFRMmZo9z4dejYG';
 const SHARE_URL = window.claude ? ARTIFACT_URL : /^https?:$/.test(location.protocol) ? location.origin + location.pathname : '';
 
 const $ = s => document.querySelector(s);
-const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const TAU = Math.PI * 2;
-
-// ---------- tuning. The sim is fixed-step and uses no trig, so ghosts replay exactly.
-const ROWS = 12, DT = 1 / 120;
-const G = 80, VY_MAX = 24, KICK = 3;
-const PW = 0.8, PH = 0.8, EPS = 1e-6;
-const TARGET_X = 8, MOUTH_X = 1.6, START_X = 8;
-const COYOTE = 10, BUFFER = 14;
-const camSpeed = x => 6 + 8 * x / (x + 700) + x * 0.0006;
 
 const COLORS = [
   { name: 'Sunny', fill: '#ffd23f' },
@@ -359,14 +386,27 @@ const store = {
   set(k, v) { try { localStorage.setItem('gih.' + k, JSON.stringify(v)); } catch (e) {} },
 };
 
+/* SIM BEGIN: shared with the leaderboard worker (node build.js copies it), so no DOM in here */
+// ---------- tuning. The sim is fixed-step and uses no trig, so ghosts replay exactly.
+// Bump SIM whenever physics or course rules change: older ghosts would no longer replay.
+const SIM = 2;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const ROWS = 12, DT = 1 / 120;
+const G = 80, VY_MAX = 24, KICK = 3;
+const PW = 0.8, PH = 0.8, EPS = 1e-6;
+const TARGET_X = 8, MOUTH_X = 1.6, START_X = 8;
+const COYOTE = 10, BUFFER = 14;
+// Gary speeds up the whole way: about 8 m/s at 100 m, 12 at 400 m, 16 at 1000 m, 20 at 2000 m.
+const camSpeed = x => 6.5 + 14 * x / (x + 900) + x * 0.002;
+// Flips get snappier as the run speeds up, so the course stays readable.
+const gravScale = cs => cs / 6.5;
+
 // ---------- seeded random
 function hashStr(s) { let h = 2166136261 >>> 0; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 function mulberry32(a) {
   return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 const randi = (r, a, b) => a + Math.floor(r() * (b - a + 1));
-const randId = () => (Math.random().toString(36).slice(2, 8) + '000000').slice(0, 6);
-const randSeed = () => 'r' + randId();
 
 // ---------- course: columns of 12 row bits, generated in seeded segments
 class Course {
@@ -404,8 +444,9 @@ class Course {
     const r = this.rng, x = this.len;
     if (x === 0) { this.fill(34); return; }
     const d = Math.min(1, x / 1500);
-    const v = camSpeed(x) + 3.5;      // fastest a runner can move here
-    const vT = v * 0.56;              // ground covered during a full flip
+    const cs = camSpeed(x);
+    const v = cs + 3.5;                               // fastest a runner can move here
+    const vT = v * 0.56 / Math.sqrt(gravScale(cs));   // ground covered during a full flip
     const S = Math.ceil(vT) + 3;      // safe stretch after anything that forces a flip
     if (x > 70 && r() < 0.22 + 0.25 * d) this.reshape(r, d);
     const extra = randi(r, 0, Math.round(6 - 6 * d));
@@ -507,9 +548,10 @@ function stepRunner(course, p, camX, frame) {
     p.g = -p.g; p.vy = p.g * KICK; p.grounded = false; p.coyote = 0; p.buffer = 0; p.evFlip = true;
     if (p.record) p.flips.push(frame);
   }
-  let vx = camSpeed(camX) + clamp((camX + TARGET_X - p.x) * 2, -2, 3.5);
-  p.vy += p.g * G * DT;
-  if (p.vy > VY_MAX) p.vy = VY_MAX; else if (p.vy < -VY_MAX) p.vy = -VY_MAX;
+  const cs = camSpeed(camX), gs = gravScale(cs), vmax = VY_MAX * Math.sqrt(gs);
+  let vx = cs + clamp((camX + TARGET_X - p.x) * 2, -2, 3.5);
+  p.vy += p.g * G * gs * DT;
+  if (p.vy > vmax) p.vy = vmax; else if (p.vy < -vmax) p.vy = -vmax;
   let zap = false;
 
   // horizontal: walls stop you, they never kill (zappers do)
@@ -545,6 +587,63 @@ function stepRunner(course, p, camX, frame) {
   else if (p.y > ROWS + 0.6 || p.y + PH < -0.6) cause = 'void';
   if (cause) { p.alive = false; p.cause = cause; p.deathFrame = frame; p.evDie = true; }
 }
+
+// ---------- ghost codes: flip frames as delta varints in URL-safe characters
+const ENC_T = '0123456789abcdefghijklmnopqrstuv';
+const ENC_C = 'wxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_~';
+function encodeFlips(frames) {
+  if (!frames.length) return '-';
+  let out = '', prev = 0;
+  for (const f of frames) {
+    let d = f - prev; prev = f;
+    const dig = [];
+    do { dig.push(d & 31); d = Math.floor(d / 32); } while (d > 0);
+    for (let i = dig.length - 1; i > 0; i--) out += ENC_C[dig[i]];
+    out += ENC_T[dig[0]];
+  }
+  return out;
+}
+function decodeFlips(s) {
+  if (!s || s === '-') return [];
+  const out = []; let acc = 0, prev = 0;
+  for (const ch of s) {
+    let i = ENC_C.indexOf(ch);
+    if (i >= 0) { acc = acc * 32 + i; if (acc > 1e7) return null; continue; }
+    i = ENC_T.indexOf(ch);
+    if (i < 0) return null;
+    acc = acc * 32 + i; prev += acc; out.push(prev); acc = 0;
+    if (out.length > 6000) return null;
+  }
+  return out;
+}
+const cleanName = s => String(s == null ? '' : s).replace(/[^A-Za-z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 14);
+// Replays a ghost to its end and returns how far it got. maxFrames bounds the work.
+function simulateGhost(course, flips, maxFrames) {
+  const p = makeRunner({ replay: flips });
+  const limit = maxFrames || 400000;
+  let cam = 0, f = 0;
+  while (p.alive && f < limit) { stepRunner(course, p, cam, f); cam += camSpeed(cam) * DT; f++; }
+  return { d: p.dist, frames: f, alive: p.alive };
+}
+/* SIM END */
+
+const randId = () => (Math.random().toString(36).slice(2, 8) + '000000').slice(0, 6);
+const randSeed = () => 'r' + randId();
+const ghostDist = (seed, flips) => simulateGhost(getCourse(seed), flips).d;
+const bestKey = seed => 'best' + SIM + '.' + seed;
+// Challenge codes carry the sim version: race2.<seed>.<name>.<flips>
+function parseChallenge(str) {
+  let s = String(str || '').trim();
+  const h = s.lastIndexOf('#'); if (h >= 0) s = s.slice(h + 1);
+  try { s = decodeURIComponent(s); } catch (e) {}
+  const m = /^race(\d*)\.([a-z0-9]{1,16})\.([A-Za-z0-9_]{1,14})\.([0-9a-zA-Z_~-]{1,9000})$/.exec(s);
+  if (!m) return null;
+  if ((+m[1] || 1) !== SIM) return { old: true };
+  const flips = decodeFlips(m[4]);
+  if (!flips) return null;
+  return { seed: m[2], name: cleanName(m[3].replace(/_/g, ' ')) || 'Someone', flips };
+}
+function challengeCode(seed, name, f) { return 'race' + SIM + '.' + seed + '.' + (cleanName(name) || 'Someone').replace(/ /g, '_') + '.' + f; }
 
 function makeRun(seed, cached) {
   return { seed, course: cached ? getCourse(seed) : new Course(seed), frame: 0, camX: 0, pcam: 0, runners: [] };
@@ -583,54 +682,6 @@ function botThink(c, p) {
   if (p.calm) { p.calm = false; if (Math.random() < (p.mistake || 0)) { p.freeze = 18 + Math.floor(Math.random() * 40); return false; } }
   if (!near && p.smart && dangerAt(c, p.x + p.vx * 0.5, p.y, -p.g)) return false;
   return Math.random() < 0.9;
-}
-
-// ---------- ghost codes: flip frames as delta varints in URL-safe characters
-const ENC_T = '0123456789abcdefghijklmnopqrstuv';
-const ENC_C = 'wxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_~';
-function encodeFlips(frames) {
-  if (!frames.length) return '-';
-  let out = '', prev = 0;
-  for (const f of frames) {
-    let d = f - prev; prev = f;
-    const dig = [];
-    do { dig.push(d & 31); d = Math.floor(d / 32); } while (d > 0);
-    for (let i = dig.length - 1; i > 0; i--) out += ENC_C[dig[i]];
-    out += ENC_T[dig[0]];
-  }
-  return out;
-}
-function decodeFlips(s) {
-  if (!s || s === '-') return [];
-  const out = []; let acc = 0, prev = 0;
-  for (const ch of s) {
-    let i = ENC_C.indexOf(ch);
-    if (i >= 0) { acc = acc * 32 + i; if (acc > 1e7) return null; continue; }
-    i = ENC_T.indexOf(ch);
-    if (i < 0) return null;
-    acc = acc * 32 + i; prev += acc; out.push(prev); acc = 0;
-    if (out.length > 6000) return null;
-  }
-  return out;
-}
-const cleanName = s => String(s == null ? '' : s).replace(/[^A-Za-z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 14);
-function parseChallenge(str) {
-  let s = String(str || '').trim();
-  const h = s.lastIndexOf('#'); if (h >= 0) s = s.slice(h + 1);
-  try { s = decodeURIComponent(s); } catch (e) {}
-  const m = /^race\.([a-z0-9]{1,16})\.([A-Za-z0-9_]{1,14})\.([0-9a-zA-Z_~-]{1,9000})$/.exec(s);
-  if (!m) return null;
-  const flips = decodeFlips(m[3]);
-  if (!flips) return null;
-  return { seed: m[1], name: cleanName(m[2].replace(/_/g, ' ')) || 'Someone', flips };
-}
-function challengeCode(seed, name, f) { return 'race.' + seed + '.' + (cleanName(name) || 'Someone').replace(/ /g, '_') + '.' + f; }
-function simulateGhost(seed, flips) {
-  const course = getCourse(seed);
-  const p = makeRunner({ replay: flips });
-  let cam = 0, f = 0;
-  while (p.alive && f < 400000) { stepRunner(course, p, cam, f); cam += camSpeed(cam) * DT; f++; }
-  return p.dist;
 }
 
 // ---------- courses by date
@@ -688,6 +739,7 @@ const Sound = {
   ding() { this.tone(988, null, 0.16, 'sine', 0.3); this.tone(1480, null, 0.22, 'sine', 0.22, 0.08); },
   beep(hi) { this.tone(hi ? 880 : 440, null, hi ? 0.38 : 0.14, 'square', 0.22); },
   close() { this.hiss(0.22, 0.25, 2600, 'bandpass'); this.tone(520, 980, 0.12, 'sine', 0.16); },
+  faster() { this.tone(260, 1300, 0.4, 'sawtooth', 0.16); this.hiss(0.4, 0.22, 1800, 'bandpass'); this.tone(660, 1320, 0.25, 'square', 0.12, 0.18); },
   blip() { this.tone(520, 780, 0.08, 'square', 0.2); },
   win() { [0, 4, 7, 12].forEach((s, i) => this.tone(523 * Math.pow(2, s / 12), null, 0.22, 'square', 0.22, i * 0.09)); },
   startMusic() {
@@ -718,6 +770,7 @@ const Sound = {
 const cv = $('#cv'), ctx = cv.getContext('2d');
 let W = 1, H = 1, dpr = 1, tile = 40, oy = 0, grads = {};
 const STARS = Array.from({ length: 90 }, () => ({ x: Math.random(), y: Math.random(), s: 0.8 + Math.random() * 1.8, p: Math.random() * TAU, f: 0.5 + Math.random() * 2 }));
+const STREAKS = Array.from({ length: 32 }, () => ({ y: 0.08 + Math.random() * 0.84, o: Math.random(), l: 0.4 + Math.random() * 0.6 }));
 function layout() {
   W = Math.max(1, innerWidth); H = Math.max(1, innerHeight);
   dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -736,7 +789,7 @@ addEventListener('resize', layout);
 layout();
 
 // ---------- effects
-const fx = { parts: [], texts: [], shake: 0, gOpen: 0.6, gSnap: 0, gLunge: 0, gHungry: 0, gTarget: null, time: 0, view: 0, dt: 0 };
+const fx = { parts: [], texts: [], shake: 0, gOpen: 0.6, gSnap: 0, gLunge: 0, gHungry: 0, gTarget: null, time: 0, view: 0, dt: 0, streak: 0 };
 const reduceMotion = (() => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
 function burst(x, y, color, n, speed, life, size, grav) {
   for (let i = 0; i < n; i++) {
@@ -760,7 +813,7 @@ function nick() { return cleanName($('#nick').value) || cleanName(store.get('nic
 const isPlayMode = () => game.mode === 'solo' || game.mode === 'live';
 
 // ---------- screens
-const SCREENS = ['scrMenu', 'scrResults', 'scrPause', 'scrParty', 'scrPartyEnd', 'scrLive', 'scrLiveEnd'];
+const SCREENS = ['scrMenu', 'scrResults', 'scrBoard', 'scrPause', 'scrParty', 'scrPartyEnd', 'scrLive', 'scrLiveEnd'];
 function showScreen(id) { for (const s of SCREENS) document.getElementById(s).hidden = s !== id; ui.screen = id; ui.shownAt = performance.now(); }
 function hideScreens() { for (const s of SCREENS) document.getElementById(s).hidden = true; ui.screen = null; }
 function blurActive() { const a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); }
@@ -822,7 +875,7 @@ function startSolo(seed) {
   game.mode = 'solo'; game.phase = 'ready'; game.seed = seed; game.slow = 1; game.acc = 0;
   const run = makeRun(seed, true);
   game.markers = [];
-  const best = store.get('best.' + seed, null);
+  const best = store.get(bestKey(seed), null);
   if (best && best.f) {
     const fl = decodeFlips(best.f);
     if (fl) run.runners.push(makeRunner({ replay: fl, ghost: true, color: myColor(), tag: 'Your best' }));
@@ -860,7 +913,7 @@ function showResults() {
   const me = game.me, seed = game.seed;
   game.phase = 'over'; game.slow = 1;
   setHud(false); hideHint();
-  const key = 'best.' + seed;
+  const key = bestKey(seed);
   const prev = store.get(key, null);
   const isNew = me.dist > 0 && (!prev || me.dist > prev.d);
   if (isNew) store.set(key, { d: me.dist, f: encodeFlips(me.flips) });
@@ -886,6 +939,14 @@ function showResults() {
   sb.disabled = !game.shareData;
   sb.textContent = game.shareData ? 'Challenge a friend with your ' + game.shareData.d + ' m' : 'Challenge a friend';
   $('#shareMsg').textContent = ''; $('#shareText').hidden = true;
+  const rank = $('#resRank'); rank.hidden = true;
+  if (isNew && /^d\d{8}$/.test(seed) && boardReachable()) {
+    rank.hidden = false; rank.textContent = 'Sending your run to the leaderboard…';
+    submitBest(seed).then(res => {
+      if (!res || !res.rank) rank.textContent = 'The leaderboard is out of reach right now. Your run is saved and goes up next time.';
+      else rank.textContent = res.rank === 1 ? 'You are #1 on today\'s leaderboard!' : 'You are #' + res.rank + ' on today\'s leaderboard.';
+    });
+  }
   showScreen('scrResults');
 }
 function shareMessage(d) {
@@ -1228,6 +1289,117 @@ function drawLiveGhosts(cam) {
   }
 }
 
+// ---------- leaderboard: a Cloudflare Worker with D1. The artifact sandbox can't reach other hosts,
+// so there the board points people to the public page.
+const PUBLIC_URL = 'https://anonymoesje.github.io/gary-is-hungry/';
+const BOARD_URL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? 'http://localhost:8787' : 'https://gary-board.anonymoesje.workers.dev';
+const boardReachable = () => !window.claude && /^https?:$/.test(location.protocol);
+const board = { tab: 'today', from: 'scrMenu', checked: new Map(), myHash: undefined, token: 0 };
+function playerId() {
+  let id = store.get('pid', '');
+  if (!/^[0-9a-f]{24}$/.test(id)) {
+    const a = new Uint8Array(12);
+    try { crypto.getRandomValues(a); } catch (e) { for (let i = 0; i < 12; i++) a[i] = Math.floor(Math.random() * 256); }
+    id = [...a].map(b => b.toString(16).padStart(2, '0')).join('');
+    store.set('pid', id);
+  }
+  return id;
+}
+async function myHash() {
+  if (board.myHash !== undefined) return board.myHash;
+  try {
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(playerId()));
+    board.myHash = [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('').slice(0, 24);
+  } catch (e) { board.myHash = null; }
+  return board.myHash;
+}
+async function boardFetch(path, opts) {
+  const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+  const tm = setTimeout(() => ctl && ctl.abort(), 9000);
+  try {
+    const r = await fetch(BOARD_URL + path, Object.assign({ cache: 'no-store', signal: ctl && ctl.signal }, opts));
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error(body.error || 'http ' + r.status), { status: r.status });
+    return body;
+  } finally { clearTimeout(tm); }
+}
+// Sends your best run on a daily course. The server replays the ghost before it counts.
+async function submitBest(seed) {
+  if (!boardReachable() || !/^d\d{8}$/.test(seed)) return null;
+  const best = store.get(bestKey(seed), null);
+  if (!best || !best.d) return null;
+  try {
+    const res = await boardFetch('/scores', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ v: SIM, pid: playerId(), name: nick(), col: myColor(), seed, d: best.d, f: best.f }) });
+    store.set('sent' + SIM + '.' + seed, best.d);
+    return res;
+  } catch (e) { return null; }
+}
+// Every row is replayed here too, so a doctored score never shows up.
+async function rowHolds(e) {
+  const key = e.seed + '|' + e.d + '|' + e.f;
+  if (board.checked.has(key)) return board.checked.get(key);
+  let ok = false;
+  const fl = /^d\d{8}$/.test(e.seed) ? decodeFlips(e.f) : null;
+  if (fl) { await new Promise(r => setTimeout(r, 0)); const run = simulateGhost(getCourse(e.seed), fl, 120 * 60 * 15); ok = !run.alive && run.d === e.d; }
+  board.checked.set(key, ok);
+  return ok;
+}
+function closeBoard() {
+  board.token++;
+  if (board.from === 'scrResults' && game.mode === 'solo' && game.phase === 'over') showScreen('scrResults');
+  else if (game.mode === 'attract') { refreshMenu(); showScreen('scrMenu'); }
+  else toMenu();
+}
+function openBoard(tab, from) {
+  if (tab) board.tab = tab;
+  if (from) board.from = from;
+  showScreen('scrBoard');
+  loadBoard();
+}
+async function loadBoard() {
+  const tok = ++board.token, tab = board.tab;
+  $('#lbTabToday').setAttribute('aria-selected', String(tab === 'today'));
+  $('#lbTabAll').setAttribute('aria-selected', String(tab === 'all'));
+  $('#lbTitle').textContent = tab === 'today' ? courseLabel(todaySeed()) : 'Best runs ever';
+  const list = $('#lbList'), msg = $('#lbMsg');
+  list.textContent = '';
+  if (!boardReachable()) { msg.textContent = 'The leaderboard lives on the public game. Open ' + PUBLIC_URL + ' to see it and get on it.'; return; }
+  msg.textContent = 'Loading…';
+  // a run that never reached the board (offline, closed tab) gets another try now
+  const today = todaySeed(), best = store.get(bestKey(today), null);
+  if (best && best.d > (store.get('sent' + SIM + '.' + today, 0) || 0)) await submitBest(today);
+  let data;
+  try { data = await boardFetch('/scores?v=' + SIM + '&seed=' + (tab === 'today' ? today : 'all')); }
+  catch (e) { if (tok === board.token) msg.textContent = 'Could not reach the leaderboard right now. Check your connection and try again.'; return; }
+  const me = await myHash();
+  const rows = [];
+  for (const e of (data.entries || [])) {
+    if (tok !== board.token) return;
+    const row = { h: String(e.h || ''), name: cleanName(e.name) || 'Someone', col: clamp(e.col | 0, 0, 3), seed: String(e.seed || ''), d: e.d | 0, f: String(e.f || '') };
+    if (await rowHolds(row)) rows.push(row);
+  }
+  if (tok !== board.token || ui.screen !== 'scrBoard') return;
+  list.textContent = '';
+  rows.forEach((r, i) => {
+    const li = document.createElement('li');
+    if (me && r.h === me) li.className = 'me';
+    const rk = document.createElement('span'); rk.className = 'rank'; rk.textContent = i + 1;
+    const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = COLORS[r.col].fill;
+    const nm = document.createElement('span'); nm.className = 'grow'; nm.textContent = r.name + (me && r.h === me ? ' (you)' : '');
+    if (tab === 'all') { const sub = document.createElement('span'); sub.className = 'lb-sub'; sub.textContent = courseLabel(r.seed).split(' · ')[1] || ''; nm.appendChild(sub); }
+    const dist = document.createElement('span'); dist.className = 'num'; dist.textContent = r.d + ' m';
+    const race = document.createElement('button'); race.className = 'lb-race'; race.textContent = 'Race';
+    race.setAttribute('aria-label', 'Race ' + r.name + "'s ghost");
+    race.addEventListener('click', () => { setChallenge({ seed: r.seed, name: r.name, flips: decodeFlips(r.f) }); startSolo(r.seed); });
+    li.append(rk, dot, nm, dist, race);
+    list.appendChild(li);
+  });
+  if (tab === 'today') {
+    const n = data.total | 0;
+    msg.textContent = rows.length ? (n === 1 ? '1 player on today\'s course so far.' : n + ' players on today\'s course so far.') + ' Press Race to chase someone\'s ghost.' : 'Nobody has run today\'s course yet. Be the first on the board.';
+  } else msg.textContent = rows.length ? 'Each player\'s best run on any daily course.' : 'No runs on the board yet.';
+}
+
 // ---------- sim and events
 function simStep() {
   const run = game.run;
@@ -1239,8 +1411,20 @@ function simStep() {
     if (p.evDie) onDie(p, loud);
     if (p.alive && p.human) juice(p, run);
   }
+  // every speed level is announced, so the ramp is felt and not just measured
+  const lvl = speedLevel(run.camX);
+  if (lvl > (run.lvl || 1)) {
+    run.lvl = lvl;
+    fx.streak = 1;
+    if (loud && run.runners.some(p => p.alive && !p.ghost)) {
+      popText(run.camX + Math.min(W / tile - 4, 15), ROWS / 2, 'FASTER!', '#4ff3ff', 1.25);
+      Sound.faster();
+      const el = $('#hudSpeed'); el.classList.remove('up'); void el.offsetWidth; el.classList.add('up');
+    }
+  }
   if (game.mode === 'live' && game.me && game.me.alive && run.frame % 8 === 0) liveSend();
 }
+const speedLevel = camX => 1 + Math.floor((camSpeed(camX) - 6.5) / 1.5);
 function onFlip(p, loud) {
   const footY = -p.g > 0 ? p.y + PH : p.y;
   if (!p.ghost) burst(p.x + PW / 2, footY, '#fff2df', 6, 3, 0.3, 0.1);
@@ -1320,6 +1504,7 @@ function updateFx(dt) {
   for (const t of fx.texts) t.life -= dt;
   fx.texts = fx.texts.filter(t => t.life > 0);
   fx.shake *= Math.exp(-dt * 9);
+  fx.streak *= Math.exp(-dt * 1.8);
   const run = game.run; if (!run) return;
   for (const p of run.runners) {
     const v = p.vis;
@@ -1347,6 +1532,7 @@ function updateFx(dt) {
 
 function updateHud() {
   if ($('#hud').hidden || !game.run) return;
+  setText('hudSpeed', 'Speed ' + speedLevel(game.run.camX));
   if (game.mode === 'solo' || game.mode === 'live') {
     setText('hudDist', game.me.dist + ' m');
     if (game.mode === 'live') {
@@ -1384,6 +1570,21 @@ function drawBackdrop(cam) {
   ctx.globalAlpha = 1;
   hills(px * 0.12, oy + ROWS * tile * 0.6, tile * 0.9, 0.0032, '#23105a');
   hills(px * 0.25, oy + ROWS * tile * 0.76, tile * 0.7, 0.006, '#2d1470');
+  // speed streaks thicken as Gary speeds up, and flare at each new level
+  const cs = camSpeed(Math.max(0, cam + fx.view));
+  const k = clamp((cs - 7.5) / 12, 0, 1) * 0.5 + fx.streak * 0.35;
+  if (k > 0.02 && !reduceMotion) {
+    ctx.fillStyle = '#fff2df';
+    const n = Math.round(6 + 26 * k), span = W + tile * 6;
+    for (let i = 0; i < n; i++) {
+      const s = STREAKS[i];
+      const len = tile * (1.5 + cs / 4) * s.l;
+      const x = span - ((s.o * span + fx.time * cs * tile * (1.4 + s.l)) % span) - tile * 3;
+      ctx.globalAlpha = k * (0.25 + 0.5 * s.l);
+      ctx.fillRect(x, oy + s.y * ROWS * tile, len, Math.max(1, tile * 0.04));
+    }
+    ctx.globalAlpha = 1;
+  }
   ctx.fillStyle = grads.ab; ctx.fillRect(0, oy + (ROWS - 1) * tile, W, H);
   ctx.fillStyle = grads.at; ctx.fillRect(0, 0, W, oy + tile);
 }
@@ -1716,6 +1917,7 @@ addEventListener('keydown', e => {
     return;
   }
   if (scr === 'scrPause') { if (e.code === 'Escape' || e.code === 'KeyP') { e.preventDefault(); resume(); } return; }
+  if (scr === 'scrBoard') { if (e.code === 'Escape') closeBoard(); return; }
   if (scr === 'scrPartyEnd') { if (e.code === 'Enter') { e.preventDefault(); startPartyMatch(); } else if (e.code === 'Escape') toMenu(); return; }
   if (scr === 'scrLive') { if (e.code === 'Escape') toMenu(); return; }
   if (scr === 'scrLiveEnd') { if (e.code === 'Escape') { showScreen('scrLive'); renderLive(); } return; }
@@ -1791,11 +1993,14 @@ function toMenu() {
   showScreen('scrMenu');
 }
 function refreshMenu() {
-  const best = store.get('best.' + todaySeed(), null);
+  const best = store.get(bestKey(todaySeed()), null);
   $('#dailySub').textContent = best && best.d ? 'Your best today: ' + best.d + ' m. Same course for everyone.' : 'Everyone gets the same course today';
   const card = $('#chCard'), ch = game.challenge;
   card.hidden = !ch;
-  if (ch) {
+  $('#btnCh').hidden = !!(ch && ch.old);
+  if (ch && ch.old) {
+    $('#chText').textContent = 'This challenge link comes from an older version of the game. Gary got faster since then, so that ghost can\'t run any more. Ask your friend for a new link.';
+  } else if (ch) {
     const p = $('#chText'); p.textContent = '';
     const b1 = document.createElement('b'); b1.textContent = ch.name;
     const b2 = document.createElement('b'); b2.textContent = ch.dist + ' m';
@@ -1805,7 +2010,7 @@ function refreshMenu() {
   $('#btnLive').hidden = live.state === 'none';
 }
 function setChallenge(ch) {
-  ch.dist = simulateGhost(ch.seed, ch.flips);
+  if (!ch.old) ch.dist = ghostDist(ch.seed, ch.flips);
   game.challenge = ch;
   if (ui.screen === 'scrMenu') refreshMenu();
 }
@@ -1813,6 +2018,7 @@ function loadCode() {
   const ch = parseChallenge($('#codeIn').value);
   const msg = $('#codeMsg');
   if (!ch) { msg.textContent = 'That code does not look right. Copy the whole link or code and try again.'; return; }
+  if (ch.old) { msg.textContent = 'That code comes from an older version of the game, so its ghost can\'t run any more.'; return; }
   setChallenge(ch); refreshMenu();
   msg.textContent = 'Loaded. ' + ch.name + "'s ghost is waiting at the top.";
   $('#codeIn').value = '';
@@ -1850,6 +2056,12 @@ function initMenu() {
   on('#btnCode', () => loadCode());
   on('#btnAgain', () => startSolo(game.seed));
   on('#btnResMenu', () => toMenu());
+  on('#btnBoard', () => openBoard('today', 'scrMenu'));
+  on('#btnResBoard', () => openBoard('today', 'scrResults'));
+  on('#lbTabToday', () => { board.tab = 'today'; loadBoard(); });
+  on('#lbTabAll', () => { board.tab = 'all'; loadBoard(); });
+  on('#lbPlay', () => startSolo(todaySeed()));
+  on('#lbBack', () => closeBoard());
   on('#btnShare', () => { if (game.shareData) copyText(shareMessage(game.shareData), $('#shareMsg'), $('#shareText'), 'Copied. Paste it into a chat with your friends.'); });
   on('#btnResume', () => resume());
   on('#btnRestart', () => startSolo(game.seed));
