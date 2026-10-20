@@ -11,6 +11,7 @@
 import { SIM, Course, simulateGhost, decodeFlips, encodeFlips, cleanName } from './sim.js';
 
 const ALLOWED = ['https://anonymoesje.github.io'];
+const GAME_URL = 'https://anonymoesje.github.io/gary-is-hungry/';
 const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 const DAILY = /^d(\d{4})(\d{2})(\d{2})$/;
 const FRAME_CAP = 120 * 60 * 15;   // a quarter of an hour of play is far beyond any real run
@@ -61,6 +62,10 @@ export default {
     const url = new URL(req.url);
     const h = cors(req.headers.get('origin') || '', env);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...BASE_HEADERS, ...h } });
+    // people who open the server's own address land on the game instead of a bare error
+    if (url.pathname === '/' && (req.method === 'GET' || req.method === 'HEAD')) {
+      return new Response(null, { status: 302, headers: { Location: GAME_URL, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
+    }
     if (url.pathname !== '/scores') return json({ error: 'not found' }, 404, h);
     const ip = req.headers.get('cf-connecting-ip') || 'unknown';
     try {
