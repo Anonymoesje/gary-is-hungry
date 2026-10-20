@@ -11,7 +11,7 @@ const csp = [
   "script-src 'unsafe-inline'",
   "style-src 'unsafe-inline' https://fonts.googleapis.com",
   'font-src https://fonts.gstatic.com',
-  'connect-src https://gary-board.anonymoesje.workers.dev',
+  'connect-src https://gary-board.anonymoesje.workers.dev wss://gary-board.anonymoesje.workers.dev',
   "img-src 'self' data:",
   "base-uri 'none'",
   "form-action 'none'",

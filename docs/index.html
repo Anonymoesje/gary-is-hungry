@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://gary-board.anonymoesje.workers.dev; img-src 'self' data:; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><style>[hidden]{display:none!important}img{max-width:100%}</style></head><body><title>Gary Is Hungry</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src https://gary-board.anonymoesje.workers.dev wss://gary-board.anonymoesje.workers.dev; img-src 'self' data:; base-uri 'none'; form-action 'none'"><meta name="referrer" content="no-referrer"><style>[hidden]{display:none!important}img{max-width:100%}</style></head><body><title>Gary Is Hungry</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -107,6 +107,14 @@ ol.board li,ul.peers li{display:flex;align-items:center;gap:10px;padding:8px 12p
 .st{font-size:.8rem;font-weight:700;color:var(--muted)}
 .dot{width:18px;height:18px;flex:0 0 auto;border-radius:6px;border:2px solid var(--ink)}
 
+/* online party */
+.party-code{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border:3px solid var(--ink);border-radius:14px;background:var(--sun)}
+.party-code .code{font-family:var(--display);font-size:2rem;letter-spacing:.16em;line-height:1;-webkit-user-select:all;user-select:all}
+#joinCode{font-family:var(--display);font-size:1.3rem;letter-spacing:.2em;text-transform:uppercase}
+.stage-box{position:relative;border:3px solid var(--ink);border-radius:14px;overflow:hidden;background:#1d1048}
+#stage{display:block;width:100%;height:150px;cursor:pointer;touch-action:manipulation}
+.stage-hint{position:absolute;left:0;right:0;top:0;height:13px;line-height:13px;text-align:center;font-size:.64rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink);opacity:.8;pointer-events:none;white-space:nowrap;overflow:hidden}
+
 /* leaderboard */
 .tabs{display:flex;gap:4px;background:var(--paper-2);border:2px solid var(--ink);border-radius:13px;padding:4px}
 .tabs button{flex:1;border:0;border-radius:9px;padding:8px;font-family:var(--display);font-size:1rem;background:transparent;color:var(--ink);cursor:pointer}
@@ -214,6 +222,7 @@ ol.board li.me{background:#fff4b8}
         <button class="btn btn-paper" id="btnParty">Party mode</button>
       </div>
       <button class="btn btn-paper" id="btnBoard">Leaderboard</button>
+      <button class="btn btn-mint" id="btnOnline" hidden>Online party with friends</button>
       <button class="btn btn-mint" id="btnLive" hidden>Live race with friends</button>
       <p class="controls"><b>Flip gravity</b> with Space, the arrow keys, a click or a tap. You can only flip while you touch a surface.</p>
       <details class="more"><summary>How it works</summary>
@@ -323,12 +332,37 @@ ol.board li.me{background:#fff4b8}
   </div>
 </section>
 
+<section id="scrOnline" class="screen" hidden>
+  <div class="wrap">
+    <div class="card">
+      <div class="eyebrow">Online party</div>
+      <h2>Play with friends anywhere</h2>
+      <p>Start a party and send your friends the code. Everyone lands in the same lobby, sees each other flip, and races the same course live.</p>
+      <button class="btn btn-big" id="btnPartyNew"><span>Start a party</span><small>You get a code to share</small></button>
+      <div class="field">
+        <label for="joinCode">Join with a code</label>
+        <div class="code-row"><input id="joinCode" type="text" maxlength="5" placeholder="ABCDE" autocomplete="off" spellcheck="false" autocapitalize="characters"><button class="btn btn-mint btn-sm" id="btnPartyJoin">Join</button></div>
+      </div>
+      <p class="fine" id="onlineMsg"></p>
+      <button class="btn btn-paper" id="btnOnlineBack">Back</button>
+    </div>
+  </div>
+</section>
+
 <section id="scrLive" class="screen" hidden>
   <div class="wrap">
     <div class="card">
-      <div class="eyebrow">Live race</div>
-      <h2>Race your friends right now</h2>
-      <p>Everyone on this screen races the same course at the same time, each on their own device. You see the others as ghosts.</p>
+      <div class="eyebrow" id="liveEyebrow">Live race</div>
+      <h2 id="liveTitle">Race your friends right now</h2>
+      <div class="party-code" id="livePartyBox" hidden>
+        <span class="lbl">Party code</span>
+        <span class="code" id="liveCode">-----</span>
+      </div>
+      <p id="liveIntro">Everyone on this screen races the same course at the same time, each on their own device. You see the others as ghosts.</p>
+      <div class="stage-box">
+        <canvas id="stage" aria-label="Lobby: everyone's blob, press Space or tap to flip yours"></canvas>
+        <span class="stage-hint">Press Space or tap here to flip your blob</span>
+      </div>
       <ul class="peers" id="livePeers"></ul>
       <p class="fine" id="liveMsg"></p>
       <div class="row">
@@ -767,7 +801,8 @@ const Sound = {
 };
 
 // ---------- canvas
-const cv = $('#cv'), ctx = cv.getContext('2d');
+const cv = $('#cv');
+let ctx = cv.getContext('2d');   // swapped briefly while the lobby stage draws
 let W = 1, H = 1, dpr = 1, tile = 40, oy = 0, grads = {};
 const STARS = Array.from({ length: 90 }, () => ({ x: Math.random(), y: Math.random(), s: 0.8 + Math.random() * 1.8, p: Math.random() * TAU, f: 0.5 + Math.random() * 2 }));
 const STREAKS = Array.from({ length: 32 }, () => ({ y: 0.08 + Math.random() * 0.84, o: Math.random(), l: 0.4 + Math.random() * 0.6 }));
@@ -813,7 +848,7 @@ function nick() { return cleanName($('#nick').value) || cleanName(store.get('nic
 const isPlayMode = () => game.mode === 'solo' || game.mode === 'live';
 
 // ---------- screens
-const SCREENS = ['scrMenu', 'scrResults', 'scrBoard', 'scrPause', 'scrParty', 'scrPartyEnd', 'scrLive', 'scrLiveEnd'];
+const SCREENS = ['scrMenu', 'scrResults', 'scrBoard', 'scrPause', 'scrParty', 'scrPartyEnd', 'scrOnline', 'scrLive', 'scrLiveEnd'];
 function showScreen(id) { for (const s of SCREENS) document.getElementById(s).hidden = s !== id; ui.screen = id; ui.shownAt = performance.now(); }
 function hideScreens() { for (const s of SCREENS) document.getElementById(s).hidden = true; ui.screen = null; }
 function blurActive() { const a = document.activeElement; if (a && a !== document.body && a.blur) a.blur(); }
@@ -1123,11 +1158,91 @@ function peerInfo(p) {
   const pr = (p && p.presence) || {};
   return { nick: cleanName(pr.nick) || 'Someone', col: clamp(pr.col | 0, 0, 3), live: !!pr.live, race: validRace(pr.race), run: validRun(pr.run) };
 }
+// ---------- online parties: a WebSocket room on the leaderboard worker, one per party code.
+// It offers the same calls as the claude.ai room (presence, peers, onPeers, onConnection), so the
+// live race code above runs unchanged in both places.
+const PARTY_CODE = /^[A-HJ-NP-Z2-9]{5}$/;
+function newPartyCode() {
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', a = new Uint8Array(5);
+  try { crypto.getRandomValues(a); } catch (e) { for (let i = 0; i < 5; i++) a[i] = Math.floor(Math.random() * 256); }
+  return [...a].map(b => abc[b % abc.length]).join('');
+}
+function wsRoom(code) {
+  const url = BOARD_URL.replace(/^http/, 'ws') + '/room/' + code;
+  const others = new Map(), peerFns = new Set(), connFns = new Set(), errFns = new Set();
+  let ws = null, me = 'me', connected = false, closed = false, tries = 0, mine = {}, snap = Object.freeze([]);
+  const freezePeer = (peer, p, self) => Object.freeze({ peer, by: null, isMe: !!self, sameTab: !!self, kind: 'viewer', guest: false, presence: Object.freeze(Object.assign({}, p)), updatedAt: Date.now() });
+  const build = () => { snap = Object.freeze([freezePeer(me, mine, true), ...others.values()]); return snap; };
+  const tellPeers = (joined, left, updated) => { const peers = build(); for (const fn of peerFns) { try { fn({ peers, joined, left, updated }); } catch (e) {} } };
+  const setConn = c => { if (c === connected) return; connected = c; for (const fn of connFns) { try { fn(c); } catch (e) {} } };
+  const fail = code => { closed = true; for (const fn of errFns) { try { fn({ code, message: code }); } catch (e) {} } };
+  const send = o => { if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify(o)); } catch (e) {} } };
+  function open() {
+    try { ws = new WebSocket(url); } catch (e) { fail('upstream_error'); return; }
+    ws.onmessage = ev => {
+      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (!m || typeof m !== 'object') return;
+      if (m.t === 'hello') {
+        tries = 0; me = String(m.you || 'me'); others.clear();
+        for (const p of Array.isArray(m.peers) ? m.peers : []) if (p && typeof p.peer === 'string') others.set(p.peer, freezePeer(p.peer, p.p || {}));
+        setConn(true);
+        send({ t: 'p', patch: mine });   // after a reconnect everyone gets our whole state again
+        tellPeers([...others.values()], [], []);
+      } else if (m.t === 'u' && typeof m.peer === 'string') {
+        const had = others.has(m.peer), p = freezePeer(m.peer, m.p && typeof m.p === 'object' ? m.p : {});
+        others.set(m.peer, p);
+        tellPeers(had ? [] : [p], [], had ? [p] : []);
+      } else if (m.t === 'full') {
+        fail('room_full'); try { ws.close(); } catch (e) {}
+      } else if (m.t === 'l' && typeof m.peer === 'string') {
+        const had = others.get(m.peer);
+        if (had) { others.delete(m.peer); tellPeers([], [had], []); }
+      }
+    };
+    ws.onclose = ev => {
+      ws = null; setConn(false);
+      const gone = [...others.values()]; others.clear(); if (gone.length) tellPeers([], gone, []);
+      if (closed) return;
+      if (ev.code === 4001) { fail('room_full'); return; }
+      if (ev.code === 4008 || ev.code === 4009) { fail('invalid_argument'); return; }
+      if (++tries > 6) { fail('upstream_error'); return; }
+      setTimeout(() => { if (!closed) open(); }, Math.min(8000, 400 * Math.pow(2, tries)));
+    };
+  }
+  open();
+  return Object.freeze({
+    code,
+    presence(patch) {
+      for (const k of Object.keys(patch)) { if (patch[k] === null) delete mine[k]; else mine[k] = patch[k]; }
+      send({ t: 'p', patch });
+      tellPeers([], [], []);
+      return Promise.resolve();
+    },
+    peers: () => snap,
+    onPeers(fn, onError) { peerFns.add(fn); if (onError) errFns.add(onError); setTimeout(() => fn({ peers: build(), joined: snap, left: [], updated: [] }), 0); return () => { peerFns.delete(fn); errFns.delete(onError); }; },
+    onConnection(fn, onError) { connFns.add(fn); if (onError) errFns.add(onError); setTimeout(() => fn(connected), 0); return () => { connFns.delete(fn); errFns.delete(onError); }; },
+    connected: () => connected,
+    leave() { closed = true; if (ws) { try { ws.close(1000, 'bye'); } catch (e) {} } },
+  });
+}
+function openOnline(msg) {
+  $('#onlineMsg').textContent = msg || '';
+  showScreen('scrOnline');
+}
+function joinOnline(raw) {
+  const code = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!PARTY_CODE.test(code)) { openOnline('Party codes have 5 letters and digits, like K7QX2. Check the code and try again.'); return; }
+  if (!boardReachable()) return;
+  if (live.on || room) leaveLive();
+  room = wsRoom(code);
+  live.kind = 'online'; live.code = code; live.state = 'ready'; live.err = null; live.connected = false;
+  openLive();
+}
 function initRoom() {
   try {
     if (!window.claude || typeof window.claude.use !== 'function') return;
     // inside claude.ai the button shows right away, the lobby explains if the room can't connect
-    live.state = 'loading'; $('#btnLive').hidden = false;
+    live.state = 'loading'; live.kind = 'claude'; $('#btnLive').hidden = false;
     window.claude.use('room').then(r => {
       room = r || null; live.state = r ? 'ready' : 'unavailable';
       if (ui.screen === 'scrLive') openLive();
@@ -1137,11 +1252,19 @@ function initRoom() {
 }
 async function openLive() {
   pendingLive = false; live.on = true;
+  const online = live.kind === 'online';
   $('#inviteMsg').textContent = '';
-  $('#btnInvite').hidden = !SHARE_URL;
+  $('#btnInvite').hidden = !(online || SHARE_URL);
+  $('#livePartyBox').hidden = !online;
+  $('#liveCode').textContent = online ? live.code : '';
+  $('#liveEyebrow').textContent = online ? 'Online party' : 'Live race';
+  $('#liveTitle').textContent = online ? 'Your party lobby' : 'Race your friends right now';
+  $('#liveIntro').textContent = online
+    ? 'Send the code or the invite link. Everyone in this lobby races the same course together and sees the others as ghosts.'
+    : 'Everyone on this screen races the same course at the same time, each on their own device. You see the others as ghosts.';
   showScreen('scrLive'); renderLive();
   if (!room) return;
-  if (!live.asked) {
+  if (!live.asked && live.kind === 'claude') {
     // ask for the room up front so a consent prompt never fails silently mid-race
     live.asked = true;
     try { const perms = await window.claude.use('permissions'); if (perms) { const st = await perms.request(['room']); live.perm = st && st.room; } } catch (e) {}
@@ -1149,16 +1272,25 @@ async function openLive() {
   if (live.perm === 'denied') { renderLive(); return; }
   live.err = null;
   setPresence({ live: 1, nick: nick(), col: myColor(), race: null, run: null });
-  if (!live.unsub) {
+  if (live.subRoom !== room) {
+    live.subRoom = room;
     try {
-      live.unsub = room.onPeers(onPeers, liveError);
+      room.onPeers(onPeers, liveError);
       room.onConnection(c => { live.connected = c; if (ui.screen === 'scrLive') renderLive(); }, liveError);
     } catch (e) { liveError(e); }
   }
   checkRaces(room.peers());
   if (ui.screen === 'scrLive') renderLive();
 }
-function leaveLive() { live.on = false; live.race = null; live.ghosts.clear(); setPresence({ live: null, race: null, run: null }); }
+function leaveLive() {
+  live.on = false; live.race = null; live.ghosts.clear();
+  setPresence({ live: null, race: null, run: null });
+  if (live.kind === 'online' && room) {
+    room.leave();
+    room = null; live.subRoom = null; live.kind = null; live.code = null; live.state = 'none';
+    live.seen.clear(); stage.peers.clear();
+  }
+}
 function canJoinRace() { return live.on && (ui.screen === 'scrLive' || ui.screen === 'scrLiveEnd'); }
 function checkRaces(peers) {
   const now = Date.now();
@@ -1209,13 +1341,19 @@ function renderLive() {
     if (!p.sameTab) others++;
     ul.appendChild(liveRow(COLORS[info.col].fill, info.nick, null, p.sameTab ? 'you' : info.run && info.run.a ? 'racing' : 'ready'));
   }
+  const online = live.kind === 'online';
   const ERR = {
     not_granted: 'This page can\'t join the live room for you. Live racing works for people signed in to claude.ai who can open this game.',
     revoked: 'Access to the live room was switched off. Reload the page to try again.',
     invalid_argument: 'The game sent something the live room refused. Reload the page and try again.',
+    room_full: 'That party is full. Up to 8 players fit in one party, so start a new one with Back.',
+    upstream_error: online ? 'Could not reach the party server. Check your connection, then press Back and join again.' : '',
   };
   let msg;
-  if (live.state === 'loading') msg = 'Connecting to the live room…';
+  if (online && live.err && ERR[live.err]) msg = ERR[live.err];
+  else if (online && !live.connected) msg = 'Connecting to the party…';
+  else if (online) msg = others ? (others + 1) + ' players in this party. Anyone can start a race and everyone here joins.' : 'Nobody else is here yet. Send your friends the code or the invite link. You can also race alone.';
+  else if (live.state === 'loading') msg = 'Connecting to the live room…';
   else if (!room) msg = 'Live racing is not available in this view. Open the game on claude.ai while signed in.';
   else if (live.perm === 'denied') msg = 'Live racing needs your permission. Allow it in this page\'s Permissions menu, then open Live race again.';
   else if (live.err && ERR[live.err]) msg = ERR[live.err];
@@ -1832,6 +1970,66 @@ function drawGary(cam) {
   ctx.lineCap = 'butt';
 }
 
+// ---------- lobby stage: everyone's blob in one little room, flipping whenever its owner presses
+const stage = { peers: new Map(), myHop: 0, lastHop: 0 };
+function hop() {
+  const now = performance.now();
+  if (now - stage.lastHop < 110) return;
+  stage.lastHop = now;
+  stage.myHop++;
+  setPresence({ hop: stage.myHop });
+  Sound.unlock(); Sound.flip(stage.myHop % 2 ? -1 : 1);
+}
+function drawStage(dt) {
+  const el = $('#stage');
+  const cw = el.clientWidth, ch = el.clientHeight;
+  if (!cw || !ch) return;
+  const r = Math.min(2, window.devicePixelRatio || 1);
+  if (el.width !== Math.round(cw * r) || el.height !== Math.round(ch * r)) { el.width = Math.round(cw * r); el.height = Math.round(ch * r); }
+  const sctx = el.getContext('2d');
+  sctx.setTransform(r, 0, 0, r, 0, 0);
+  const band = 16, top = band, bottom = ch - band;
+  sctx.fillStyle = '#21114f'; sctx.fillRect(0, 0, cw, ch);
+  sctx.fillStyle = C_BASE; sctx.fillRect(0, 0, cw, band); sctx.fillRect(0, bottom, cw, band);
+  sctx.fillStyle = C_UNDER; sctx.fillRect(0, band - 4, cw, 4);
+  sctx.fillStyle = C_TOP; sctx.fillRect(0, bottom, cw, 4);
+  sctx.strokeStyle = INK; sctx.lineWidth = 2.5;
+  sctx.beginPath(); sctx.moveTo(0, top); sctx.lineTo(cw, top); sctx.moveTo(0, bottom); sctx.lineTo(cw, bottom); sctx.stroke();
+  const list = [{ key: 'me', nick: nick(), col: myColor(), hop: stage.myHop, me: true }];
+  if (room) for (const p of room.peers()) {
+    if (p.sameTab || !p.presence || !p.presence.live) continue;
+    const pr = p.presence;
+    list.push({ key: p.peer, nick: cleanName(pr.nick) || 'Someone', col: clamp(pr.col | 0, 0, 3), hop: Math.max(0, pr.hop | 0), me: false });
+  }
+  const s = Math.min(34, (bottom - top) * 0.3), slot = cw / (list.length + 1), seen = new Set();
+  list.forEach((p, i) => {
+    seen.add(p.key);
+    const g = p.hop % 2 ? -1 : 1;
+    let st = stage.peers.get(p.key);
+    if (!st) { st = { y: g > 0 ? bottom - s / 2 : top + s / 2, vy: 0, g, hop: p.hop, vis: { g, squash: 0, stretch: 0, blink: 0, nextBlink: 1 + Math.random() * 3 } }; stage.peers.set(p.key, st); }
+    if (p.hop !== st.hop) {
+      st.hop = p.hop; st.g = g; st.vy = g * 60;
+      if (!p.me) Sound.tone(g < 0 ? 480 : 360, g < 0 ? 760 : 240, 0.07, 'triangle', 0.12);
+    }
+    st.vy = clamp(st.vy + st.g * 1500 * dt, -720, 720);
+    st.y += st.vy * dt;
+    const lo = top + s / 2, hi = bottom - s / 2;
+    if (st.y >= hi) { if (st.g > 0 && st.vy > 200) st.vis.squash = 1; st.y = hi; st.vy = 0; }
+    if (st.y <= lo) { if (st.g < 0 && st.vy < -200) st.vis.squash = 1; st.y = lo; st.vy = 0; }
+    const v = st.vis;
+    v.g += (st.g - v.g) * Math.min(1, dt * 22); v.squash *= Math.exp(-dt * 9); v.stretch = Math.min(1, Math.abs(st.vy) / 720);
+    v.nextBlink -= dt; if (v.nextBlink <= 0) { v.blink = 0.12; v.nextBlink = 1.5 + Math.random() * 3.5; }
+    if (v.blink > 0) v.blink -= dt;
+    let label = p.me ? 'You' : p.nick;
+    if (list.length > 4 && label.length > 8) label = label.slice(0, 7) + '…';
+    const x = slot * (i + 1), saved = ctx;
+    ctx = sctx;
+    try { drawBlob(x, st.y, s, COLORS[p.col].fill, v, 1, false, false); drawTag(x, st.y, s, st.g, label, COLORS[p.col].fill, 1); }
+    finally { ctx = saved; }
+  });
+  for (const k of [...stage.peers.keys()]) if (!seen.has(k)) stage.peers.delete(k);
+}
+
 function drawVignette(cam) {
   const me = isPlayMode() ? game.me : null;
   if (!me || !me.alive) return;
@@ -1904,6 +2102,7 @@ addEventListener('keydown', e => {
   if (tag === 'INPUT' || tag === 'TEXTAREA') {
     if (e.code === 'Escape') e.target.blur();
     if (e.code === 'Enter' && e.target.id === 'codeIn') loadCode();
+    if (e.code === 'Enter' && e.target.id === 'joinCode') joinOnline(e.target.value);
     if (e.code === 'Enter' && e.target.id === 'nick') e.target.blur();
     return;
   }
@@ -1919,7 +2118,12 @@ addEventListener('keydown', e => {
   if (scr === 'scrPause') { if (e.code === 'Escape' || e.code === 'KeyP') { e.preventDefault(); resume(); } return; }
   if (scr === 'scrBoard') { if (e.code === 'Escape') closeBoard(); return; }
   if (scr === 'scrPartyEnd') { if (e.code === 'Enter') { e.preventDefault(); startPartyMatch(); } else if (e.code === 'Escape') toMenu(); return; }
-  if (scr === 'scrLive') { if (e.code === 'Escape') toMenu(); return; }
+  if (scr === 'scrLive') {
+    if (e.code === 'Escape') toMenu();
+    else if (FLIP_CODES.has(e.code)) { e.preventDefault(); hop(); }
+    return;
+  }
+  if (scr === 'scrOnline') { if (e.code === 'Escape') toMenu(); return; }
   if (scr === 'scrLiveEnd') { if (e.code === 'Escape') { showScreen('scrLive'); renderLive(); } return; }
   if (scr === 'scrMenu') return;
   if (isPlayMode()) {
@@ -2007,7 +2211,8 @@ function refreshMenu() {
     p.append(b1, ' outran Gary for ', b2, ' on ' + courseShort(ch.seed) + '. Can you beat that?');
     $('#btnCh').textContent = 'Race ' + ch.name + "'s ghost";
   }
-  $('#btnLive').hidden = live.state === 'none';
+  $('#btnLive').hidden = live.kind !== 'claude';
+  $('#btnOnline').hidden = !boardReachable();
 }
 function setChallenge(ch) {
   if (!ch.old) ch.dist = ghostDist(ch.seed, ch.flips);
@@ -2029,6 +2234,8 @@ function readHash() {
   try { h = decodeURIComponent(h); } catch (e) {}
   if (h === 'live') { pendingLive = true; if (room && ui.screen === 'scrMenu') openLive(); return; }
   if (h === 'party') { if (ui.screen === 'scrMenu') openParty(); return; }
+  const join = /^join\.([A-Za-z0-9]{5})$/.exec(h);
+  if (join) { if (boardReachable() && !(live.kind === 'online' && live.code === join[1].toUpperCase())) joinOnline(join[1]); return; }
   const ch = parseChallenge(h);
   if (ch) setChallenge(ch);
 }
@@ -2077,7 +2284,17 @@ function initMenu() {
   on('#btnLiveBack', () => toMenu());
   on('#btnLiveAgain', () => startLiveRace());
   on('#btnLiveLobby', () => { showScreen('scrLive'); renderLive(); });
-  on('#btnInvite', () => copyText('Come race me in Gary Is Hungry. Open this and press Live race: ' + SHARE_URL + '#live', $('#inviteMsg'), null, 'Invite link copied.'));
+  on('#btnInvite', e => {
+    e.currentTarget.blur();
+    if (live.kind === 'online') copyText('Join my Gary Is Hungry party! Code ' + live.code + ': ' + PUBLIC_URL + '#join.' + live.code, $('#inviteMsg'), null, 'Invite copied. Paste it to your friends.');
+    else copyText('Come race me in Gary Is Hungry. Open this and press Live race: ' + SHARE_URL + '#live', $('#inviteMsg'), null, 'Invite link copied.');
+  });
+  on('#btnOnline', () => openOnline());
+  on('#btnPartyNew', () => joinOnline(newPartyCode()));
+  on('#btnPartyJoin', () => joinOnline($('#joinCode').value));
+  on('#btnOnlineBack', () => toMenu());
+  $('#joinCode').addEventListener('input', e => { const v = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); if (v !== e.target.value) e.target.value = v; });
+  $('#stage').addEventListener('pointerdown', e => { e.preventDefault(); hop(); });
   on('#btnPause', e => { e.currentTarget.blur(); pause(); });
   on('#btnMute', e => { e.currentTarget.blur(); toggleMute(); });
   paintMute();
@@ -2093,6 +2310,7 @@ function frame(now) {
   pollPads();
   update(dt);
   render();
+  if (ui.screen === 'scrLive') drawStage(dt);
 }
 
 initMenu();

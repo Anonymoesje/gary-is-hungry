@@ -23,3 +23,26 @@ simple = { limit = 6, period = 60 }
 name = "READS"
 namespace_id = "7302"
 simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "CONNECTS"
+namespace_id = "7303"
+simple = { limit = 20, period = 60 }
+
+# Party rooms: one Durable Object per party code, holding only the live connections.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+# Exact per-visitor counters for connects and score submits.
+[[durable_objects.bindings]]
+name = "LIMITS"
+class_name = "Limiter"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Limiter"]

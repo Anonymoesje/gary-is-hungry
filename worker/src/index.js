@@ -9,6 +9,12 @@
 //   patterns, a cap on rows per course, and parameterized SQL only.
 // - Responses are plain JSON with locked-down headers, and only the game's own origin gets CORS.
 import { SIM, Course, simulateGhost, decodeFlips, encodeFlips, cleanName } from './sim.js';
+export { Room } from './room.js';
+export { Limiter } from './limiter.js';
+import { visitorKey } from './limiter.js';
+
+// Party codes: 5 characters without look-alikes (no 0/O, 1/I).
+const ROOM_PATH = /^\/room\/([A-HJ-NP-Z2-9]{5})$/;
 
 const ALLOWED = ['https://anonymoesje.github.io'];
 const GAME_URL = 'https://anonymoesje.github.io/gary-is-hungry/';
@@ -54,7 +60,13 @@ function recentDaily(seed) {
 // Rate limit bindings are optional, so a missing binding never takes the board down.
 async function allowed(limiter, key) {
   if (!limiter) return true;
-  try { return (await limiter.limit({ key })).success; } catch (e) { return true; }
+  try { return (await limiter.limit({ key })).success; } catch (e) { console.warn('rate limiter failed', String(e)); return true; }
+}
+// Exact count per visitor and action, on top of the approximate built-in limiter.
+async function allowedExact(env, action, ip, limit, windowMs) {
+  if (!env.LIMITS) return true;
+  try { return await env.LIMITS.get(env.LIMITS.idFromName(action + '|' + visitorKey(ip))).hit(limit, windowMs); }
+  catch (e) { console.warn('exact limiter failed', String(e)); return true; }
 }
 
 export default {
@@ -66,15 +78,24 @@ export default {
     if (url.pathname === '/' && (req.method === 'GET' || req.method === 'HEAD')) {
       return new Response(null, { status: 302, headers: { Location: GAME_URL, 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' } });
     }
-    if (url.pathname !== '/scores') return json({ error: 'not found' }, 404, h);
     const ip = req.headers.get('cf-connecting-ip') || 'unknown';
+    const room = ROOM_PATH.exec(url.pathname);
+    if (room) {
+      // Browsers always send Origin on a WebSocket upgrade, so only the game's own page gets in.
+      if (!(await allowed(env.CONNECTS, ip)) || !(await allowedExact(env, 'connect', ip, 20, 60000))) return json({ error: 'slow down' }, 429, {});
+      const origin = req.headers.get('origin') || '';
+      if (!(ALLOWED.includes(origin) || (env.ALLOW_LOCAL === '1' && LOCAL.test(origin)))) return json({ error: 'forbidden' }, 403, {});
+      if ((req.headers.get('upgrade') || '').toLowerCase() !== 'websocket') return json({ error: 'websocket only' }, 426, {});
+      return env.ROOMS.get(env.ROOMS.idFromName(room[1])).fetch(req);
+    }
+    if (url.pathname !== '/scores') return json({ error: 'not found' }, 404, h);
     try {
       if (req.method === 'GET') {
         if (!(await allowed(env.READS, ip))) return json({ error: 'slow down' }, 429, h);
         return await list(url, env, h);
       }
       if (req.method === 'POST') {
-        if (!(await allowed(env.WRITES, ip))) return json({ error: 'slow down' }, 429, h);
+        if (!(await allowed(env.WRITES, ip)) || !(await allowedExact(env, 'write', ip, 6, 60000))) return json({ error: 'slow down' }, 429, h);
         return await submit(req, env, h);
       }
       return json({ error: 'method not allowed' }, 405, { ...h, Allow: 'GET, POST, OPTIONS' });
