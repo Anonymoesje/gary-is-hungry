@@ -752,7 +752,7 @@ function shake(n) { fx.shake = Math.max(fx.shake, reduceMotion ? n * 0.25 : n); 
 const game = { mode: 'attract', phase: 'play', prevPhase: null, run: null, me: null, seed: null, challenge: null, markers: [], timer: 0, slow: 1, acc: 0, alpha: 1, shareData: null };
 const ui = { screen: null, shownAt: 0 };
 const party = { players: [], target: 3, round: 0 };
-const live = { on: false, unsub: null, race: null, seen: new Set(), ghosts: new Map(), boardAt: 0 };
+const live = { on: false, unsub: null, race: null, seen: new Set(), ghosts: new Map(), boardAt: 0, state: 'none', asked: false, perm: null, err: null, connected: null };
 let room = null, pendingLive = false;
 
 function myColor() { return clamp(store.get('color', 0) | 0, 0, 3); }
@@ -1036,7 +1036,14 @@ function countdownTick(dt, onGo) {
 }
 
 // ---------- live race over the room (presence only, so viewers can take part)
-function setPresence(patch) { if (!room) return; try { const p = room.presence(patch); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
+function setPresence(patch) {
+  if (!room) return;
+  try { const p = room.presence(patch); if (p && p.catch) p.catch(liveError); } catch (e) { liveError(e); }
+}
+function liveError(e) {
+  live.err = (e && e.code) || 'upstream_error';
+  if (ui.screen === 'scrLive') renderLive();
+}
 function validRace(r) {
   if (!r || typeof r !== 'object') return null;
   const id = typeof r.id === 'string' && /^[a-z0-9]{4,10}$/.test(r.id) ? r.id : null;
@@ -1058,28 +1065,56 @@ function peerInfo(p) {
 function initRoom() {
   try {
     if (!window.claude || typeof window.claude.use !== 'function') return;
+    // inside claude.ai the button shows right away, the lobby explains if the room can't connect
+    live.state = 'loading'; $('#btnLive').hidden = false;
     window.claude.use('room').then(r => {
-      if (!r) return;
-      room = r; $('#btnLive').hidden = false;
-      if (pendingLive && ui.screen === 'scrMenu') openLive();
-    }, () => {});
+      room = r || null; live.state = r ? 'ready' : 'unavailable';
+      if (ui.screen === 'scrLive') openLive();
+      else if (r && pendingLive && ui.screen === 'scrMenu') openLive();
+    }, () => { live.state = 'unavailable'; if (ui.screen === 'scrLive') renderLive(); });
   } catch (e) {}
 }
-function openLive() {
-  if (!room) return;
+async function openLive() {
   pendingLive = false; live.on = true;
-  setPresence({ live: 1, nick: nick(), col: myColor(), race: null, run: null });
-  if (!live.unsub) {
-    try { live.unsub = room.onPeers(onPeers, () => { $('#liveMsg').textContent = 'Live racing is not available on this device right now.'; $('#btnLiveGo').disabled = true; }); } catch (e) {}
-  }
   $('#inviteMsg').textContent = '';
   $('#btnInvite').hidden = !SHARE_URL;
   showScreen('scrLive'); renderLive();
+  if (!room) return;
+  if (!live.asked) {
+    // ask for the room up front so a consent prompt never fails silently mid-race
+    live.asked = true;
+    try { const perms = await window.claude.use('permissions'); if (perms) { const st = await perms.request(['room']); live.perm = st && st.room; } } catch (e) {}
+  }
+  if (live.perm === 'denied') { renderLive(); return; }
+  live.err = null;
+  setPresence({ live: 1, nick: nick(), col: myColor(), race: null, run: null });
+  if (!live.unsub) {
+    try {
+      live.unsub = room.onPeers(onPeers, liveError);
+      room.onConnection(c => { live.connected = c; if (ui.screen === 'scrLive') renderLive(); }, liveError);
+    } catch (e) { liveError(e); }
+  }
+  checkRaces(room.peers());
+  if (ui.screen === 'scrLive') renderLive();
 }
 function leaveLive() { live.on = false; live.race = null; live.ghosts.clear(); setPresence({ live: null, race: null, run: null }); }
 function canJoinRace() { return live.on && (ui.screen === 'scrLive' || ui.screen === 'scrLiveEnd'); }
+function checkRaces(peers) {
+  const now = Date.now();
+  for (const p of peers) {
+    if (p.sameTab) continue;
+    const info = peerInfo(p);
+    if (!info.live || !info.race || live.seen.has(info.race.id)) continue;
+    const running = peers.some(q => { const r = validRun(q.presence && q.presence.run); return r && r.id === info.race.id; });
+    const remaining = info.race.cd - (now - (p.updatedAt || now));
+    if (running || remaining <= 600) { live.seen.add(info.race.id); continue; }
+    // two people pressed start at once: everyone settles on the lower race id
+    const clash = game.mode === 'live' && game.phase === 'countdown' && live.race && info.race.id < live.race.id;
+    if (canJoinRace() || clash) { joinRace(info.race, remaining); return; }
+  }
+}
 function onPeers(ch) {
-  const now = Date.now(), t = performance.now();
+  const t = performance.now();
   for (const p of ch.peers) {
     if (p.sameTab) continue;
     const info = peerInfo(p);
@@ -1088,14 +1123,9 @@ function onPeers(ch) {
       if (!gh) { gh = { x: info.run.x, y: info.run.y, vis: { g: info.run.g, squash: 0, stretch: 0, blink: 0, nextBlink: 2 } }; live.ghosts.set(p.peer, gh); }
       gh.tx = info.run.x; gh.ty = info.run.y; gh.g = info.run.g; gh.a = info.run.a; gh.d = info.run.d; gh.t = t; gh.nick = info.nick; gh.col = info.col;
     }
-    if (info.live && info.race && !live.seen.has(info.race.id)) {
-      live.seen.add(info.race.id);
-      const running = ch.peers.some(q => { const r = validRun(q.presence && q.presence.run); return r && r.id === info.race.id; });
-      const remaining = info.race.cd - (now - (p.updatedAt || now));
-      if (canJoinRace() && !running && remaining > 600) joinRace(info.race, remaining);
-    }
   }
   for (const l of ch.left) live.ghosts.delete(l.peer);
+  if (live.on) checkRaces(ch.peers);
   if (ui.screen === 'scrLive') renderLive();
   if (ui.screen === 'scrLiveEnd') renderLiveEnd();
 }
@@ -1118,7 +1148,20 @@ function renderLive() {
     if (!p.sameTab) others++;
     ul.appendChild(liveRow(COLORS[info.col].fill, info.nick, null, p.sameTab ? 'you' : info.run && info.run.a ? 'racing' : 'ready'));
   }
-  $('#liveMsg').textContent = others ? (others + 1) + ' racers here. Anyone can start a race and everyone on this screen joins.' : 'Nobody else is here yet. Send the invite link to your friends, then start when they show up. You can also race alone.';
+  const ERR = {
+    not_granted: 'This page can\'t join the live room for you. Live racing works for people signed in to claude.ai who can open this game.',
+    revoked: 'Access to the live room was switched off. Reload the page to try again.',
+    invalid_argument: 'The game sent something the live room refused. Reload the page and try again.',
+  };
+  let msg;
+  if (live.state === 'loading') msg = 'Connecting to the live room…';
+  else if (!room) msg = 'Live racing is not available in this view. Open the game on claude.ai while signed in.';
+  else if (live.perm === 'denied') msg = 'Live racing needs your permission. Allow it in this page\'s Permissions menu, then open Live race again.';
+  else if (live.err && ERR[live.err]) msg = ERR[live.err];
+  else if (live.err) msg = 'The live room had a hiccup (' + live.err + '). Others may not see you. Try Back and Live race again.';
+  else if (live.connected === false) msg = 'Connecting to the live room…';
+  else msg = others ? (others + 1) + ' racers here. Anyone can start a race and everyone on this screen joins.' : 'Nobody else is here yet. Send the invite link to your friends, then start when they show up. You can also race alone.';
+  $('#liveMsg').textContent = msg;
 }
 function startLiveRace() {
   const id = randId();
@@ -1156,7 +1199,11 @@ function renderLiveEnd() {
   const rows = liveStandings();
   const running = rows.filter(r => r.a).length;
   const top = rows[0];
-  $('#leLine').textContent = running ? 'Waiting for the others to get eaten' : rows.length < 2 ? 'Solo race done. ' + (top ? top.d + ' m.' : '') : top.me ? 'You win the race!' : top.name + ' wins the race!';
+  const tie = rows.length > 1 && rows[1].d === top.d;
+  $('#leLine').textContent = running ? 'Waiting for the others to get eaten'
+    : rows.length < 2 ? 'Solo race done. ' + (top ? top.d + ' m.' : '')
+    : tie ? 'It\'s a tie at ' + top.d + ' m!'
+    : top.me ? 'You win the race!' : top.name + ' wins the race!';
   const ol = $('#leBoard'); ol.textContent = '';
   rows.forEach((r, i) => {
     const li = liveRow(r.color, r.name + (r.me ? ' (you)' : ''), r.d + ' m', r.a ? 'still running' : null);
@@ -1755,7 +1802,7 @@ function refreshMenu() {
     p.append(b1, ' outran Gary for ', b2, ' on ' + courseShort(ch.seed) + '. Can you beat that?');
     $('#btnCh').textContent = 'Race ' + ch.name + "'s ghost";
   }
-  $('#btnLive').hidden = !room;
+  $('#btnLive').hidden = live.state === 'none';
 }
 function setChallenge(ch) {
   ch.dist = simulateGhost(ch.seed, ch.flips);
