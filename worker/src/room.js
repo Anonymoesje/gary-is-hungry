@@ -30,7 +30,16 @@ const FIELDS = {
     if (!v || typeof v !== 'object' || typeof v.id !== 'string' || !RACE_ID.test(v.id)) return undefined;
     const x = num(v.x, -50, 1e6), y = num(v.y, -5, 17), d = num(v.d, 0, 1e6);
     if (x === undefined || y === undefined || d === undefined) return undefined;
-    return { id: v.id, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, g: v.g < 0 ? -1 : 1, a: v.a ? 1 : 0, d: Math.floor(d) };
+    // the frame they are on and their latest flip frames, strictly increasing and never in the future
+    const f = Number.isInteger(v.f) && v.f >= 0 && v.f <= 1e7 ? v.f : 0;
+    const fl = [];
+    if (Array.isArray(v.fl)) {
+      for (const k of v.fl.slice(0, 32)) {
+        if (!Number.isInteger(k) || k < 0 || k > f || (fl.length && k <= fl[fl.length - 1])) return undefined;
+        fl.push(k);
+      }
+    }
+    return { id: v.id, f, fl, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, g: v.g < 0 ? -1 : 1, a: v.a ? 1 : 0, d: Math.floor(d) };
   },
 };
 function applyPatch(prev, patch) {
